@@ -1,0 +1,47 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Enable Banking",
+        "description": "Connect a bank account via the Enable Banking Open Banking (PSD2) API. You need an application registered at https://enablebanking.com/cp/applications with your own account whitelisted (\"restricted production app\" — free for personal use).\n\nRegister this exact URL as a redirect URL for your application, otherwise the bank cannot send you back here:\n\n`{redirect_uri}`",
+        "data": {
+          "application_id": "Application ID",
+          "private_key": "Private key (PEM content, not a file path)",
+          "aspsp_name": "Bank name (as listed by GET /aspsps, e.g. \"C24\")",
+          "aspsp_country": "Bank country code (ISO 3166, e.g. \"DE\")",
+          "psu_type": "Account type",
+          "valid_days": "Consent validity in days (max. per bank, usually 180)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Renew your bank consent",
+        "description": "The consent for {aspsp} needs a fresh login. PSD2 requires strong customer authentication at least every 180 days — there is no way around it.\n\nSubmit to be taken to your bank. Select the same accounts as before, otherwise entities for missing accounts will stop updating."
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach the Enable Banking API. Check application ID, private key and bank name/country.",
+      "invalid_auth": "Authentication failed — application ID or private key is not accepted by the API.",
+      "bank_error": "Your bank aborted the authorisation with \"{error}\" and gave no further detail. This is usually temporary — try again, and if it persists, try a different authentication method (app push, SMS or chip TAN) at the bank's login page.",
+      "no_code": "The bank redirected back without an authorisation code.",
+      "no_accounts": "No accounts were linked in this session. Make sure you selected at least one account during the bank login."
+    },
+    "abort": {
+      "already_configured": "This application/bank combination is already configured.",
+      "reauth_successful": "Re-authorisation was successful. Your consent has been renewed.",
+      "no_external_url": "Home Assistant has no external URL configured, so your bank cannot redirect back here. Set one under Settings → System → Network → Home Assistant URL and start again."
+    }
+  },
+  "issues": {
+    "consent_expiring": {
+      "title": "Bank consent for {title} expires in {days} days",
+      "description": "PSD2 consents last at most 180 days and cannot be refreshed automatically — a new login at your bank is required. Once it lapses, balances and transactions stop updating.\n\nGo to Settings → Devices & services → Enable Banking and re-authorise the entry."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "consent_expires": {
+        "name": "Consent expires"
+      }
+    }
+  }
+}

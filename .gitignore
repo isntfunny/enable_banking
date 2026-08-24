@@ -1,0 +1,20 @@
+# Local working directories, deliberately not part of this repository.
+# ha-core: shallow clone of home-assistant/core, kept only as a reference.
+# c24-api: standalone CLI scripts — holds the private key and a live session.
+# docs:    design notes.
+ha-core/
+c24-api/
+docs/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+
+# Editors
+.vscode/
+.idea/

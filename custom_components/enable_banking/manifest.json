@@ -1,0 +1,17 @@
+{
+  "domain": "enable_banking",
+  "name": "Enable Banking",
+  "codeowners": [],
+  "documentation": "https://enablebanking.com/docs/",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "loggers": [
+    "custom_components.enable_banking"
+  ],
+  "quality_scale": "legacy",
+  "config_flow": true,
+  "version": "0.2.0",
+  "requirements": [
+    "PyJWT[crypto]>=2.8.0"
+  ]
+}
