@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.const import Platform
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.util import dt as dt_util
 
@@ -23,6 +24,7 @@ from .const import (
     CONF_ACCOUNTS,
     CONF_APPLICATION_ID,
     CONF_PRIVATE_KEY,
+    CONF_PSU_IP,
     CONF_SESSION_ID,
     CONF_VALID_UNTIL,
     DEFAULT_UPDATE_INTERVAL,
@@ -34,7 +36,8 @@ from .coordinator import EnableBankingDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.EVENT]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.EVENT, Platform.BUTTON]
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -54,6 +57,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     client = EnableBankingClient(hass, data[CONF_APPLICATION_ID], data[CONF_PRIVATE_KEY])
     account_uids: list[str] = data[CONF_ACCOUNTS]
     session_id: str = data[CONF_SESSION_ID]
+    psu_ip = entry.options.get(CONF_PSU_IP, data.get(CONF_PSU_IP)) or None
 
     try:
         session = await client.get_session(session_id)
@@ -82,12 +86,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     account_details: dict[str, AccountDetails] = {}
     for uid in account_uids:
         try:
-            account_details[uid] = await client.get_account_details(uid)
+            account_details[uid] = await client.get_account_details(uid, psu_ip=psu_ip)
         except EnableBankingError as err:  # noqa: PERF203
             _LOGGER.warning("Could not fetch details for account %s: %s", uid, err)
 
     coordinator = EnableBankingDataUpdateCoordinator(
-        hass, client, account_uids, DEFAULT_UPDATE_INTERVAL
+        hass, client, account_uids, DEFAULT_UPDATE_INTERVAL, psu_ip=psu_ip
     )
     coordinator.config_entry = entry
 

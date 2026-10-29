@@ -19,11 +19,13 @@ no refresh mechanism — a fresh SCA is mandatory) reuses steps 2+3 via
 from __future__ import annotations
 
 import logging
+from ipaddress import ip_address
 from typing import Any
 
 import voluptuous as vol
 
 from homeassistant import config_entries
+from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
@@ -43,6 +45,7 @@ from .const import (
     CONF_ASPSP_COUNTRY,
     CONF_ASPSP_NAME,
     CONF_PRIVATE_KEY,
+    CONF_PSU_IP,
     CONF_PSU_TYPE,
     CONF_SESSION_ID,
     CONF_VALID_DAYS,
@@ -62,9 +65,9 @@ def _user_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
             vol.Required(
                 CONF_APPLICATION_ID, default=defaults.get(CONF_APPLICATION_ID, "")
             ): str,
-            vol.Required(CONF_PRIVATE_KEY, default=defaults.get(CONF_PRIVATE_KEY, "")): (
-                selector.TextSelector(selector.TextSelectorConfig(multiline=True))
-            ),
+            vol.Required(
+                CONF_PRIVATE_KEY, default=defaults.get(CONF_PRIVATE_KEY, "")
+            ): (selector.TextSelector(selector.TextSelectorConfig(multiline=True))),
             vol.Required(
                 CONF_ASPSP_NAME, default=defaults.get(CONF_ASPSP_NAME, "C24")
             ): str,
@@ -78,6 +81,7 @@ def _user_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
                 CONF_VALID_DAYS,
                 default=defaults.get(CONF_VALID_DAYS, DEFAULT_VALID_DAYS),
             ): vol.All(vol.Coerce(int), vol.Range(min=1, max=180)),
+            vol.Optional(CONF_PSU_IP, default=defaults.get(CONF_PSU_IP, "")): str,
         }
     )
 
@@ -92,6 +96,14 @@ class EnableBankingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._reauth_entry: config_entries.ConfigEntry | None = None
         self._external_data: dict[str, Any] = {}
 
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> EnableBankingOptionsFlow:
+        """Let existing integrations configure the PSU IP without a bank login."""
+        return EnableBankingOptionsFlow(config_entry)
+
     # ------------------------------------------------------------------
     # Step 1: credentials
     # ------------------------------------------------------------------
@@ -102,6 +114,15 @@ class EnableBankingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
+            user_input = dict(user_input)
+            try:
+                user_input[CONF_PSU_IP] = _normalise_psu_ip(
+                    user_input.get(CONF_PSU_IP, "")
+                )
+            except ValueError:
+                errors[CONF_PSU_IP] = "invalid_ip"
+
+        if user_input is not None and not errors:
             client = EnableBankingClient(
                 self.hass,
                 user_input[CONF_APPLICATION_ID],
@@ -129,7 +150,10 @@ class EnableBankingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=_user_schema(user_input),
             errors=errors,
-            description_placeholders={"redirect_uri": redirect_uri},
+            description_placeholders={
+                "redirect_uri": redirect_uri,
+                "applications_url": "https://enablebanking.com/cp/applications",
+            },
         )
 
     # ------------------------------------------------------------------
@@ -291,6 +315,57 @@ class EnableBankingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors={"base": error},
             description_placeholders={
                 "redirect_uri": redirect_uri,
+                "applications_url": "https://enablebanking.com/cp/applications",
                 **(placeholders or {}),
             },
+        )
+
+
+def _normalise_psu_ip(value: str) -> str:
+    """Accept an optional IPv4/IPv6 address, never a URL or hostname."""
+    value = value.strip()
+    return str(ip_address(value)) if value else ""
+
+
+class EnableBankingOptionsFlow(
+    getattr(config_entries, "OptionsFlowWithReload", config_entries.OptionsFlow)
+):
+    """Configure the IP used for startup and manual balance requests."""
+
+    def __init__(self, entry: config_entries.ConfigEntry) -> None:
+        super().__init__()
+        self._entry = entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            try:
+                psu_ip = _normalise_psu_ip(user_input.get(CONF_PSU_IP, ""))
+            except ValueError:
+                errors[CONF_PSU_IP] = "invalid_ip"
+            else:
+                options = {**self._entry.options, CONF_PSU_IP: psu_ip}
+                if not hasattr(config_entries, "OptionsFlowWithReload"):
+                    # Older HA has neither automatic reload nor self.config_entry.
+                    if self.hass.config_entries.async_update_entry(
+                        self._entry, options=options
+                    ):
+                        self.hass.async_create_task(
+                            self.hass.config_entries.async_reload(self._entry.entry_id)
+                        )
+                return self.async_create_entry(title="", data=options)
+
+        defaults = {
+            **self._entry.data,
+            **self._entry.options,
+            **(user_input or {}),
+        }
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {vol.Optional(CONF_PSU_IP, default=defaults.get(CONF_PSU_IP, "")): str}
+            ),
+            errors=errors,
         )

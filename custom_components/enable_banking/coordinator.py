@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import asyncio
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 import logging
-from typing import Any
+
+from aiohttp import ClientError
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -18,6 +20,7 @@ from .client import (
     AccountDetails,
     EnableBankingAuthError,
     EnableBankingClient,
+    EnableBankingError,
     EnableBankingRateLimitError,
     EnableBankingSessionExpiredError,
     Transaction,
@@ -61,11 +64,8 @@ class EnableBankingDataUpdateCoordinator(
 ):
     """Polls balances + transactions for every linked account.
 
-    Deliberately never sends Psu-Ip-Address / Psu-User-Agent headers — this
-    is a background job, not a PSU-present interaction — so the ASPSP's
-    "max 4x/day without PSU" limit (PSD2 RTS Art. 36(6)) applies. The default
-    update_interval (const.DEFAULT_UPDATE_INTERVAL = 240 min) is chosen to
-    match that exactly.
+    Uses the configured PSU IP for the initial refresh and explicit manual
+    balance refreshes only. Scheduled background polls omit PSU headers.
     """
 
     config_entry: ConfigEntry
@@ -76,6 +76,8 @@ class EnableBankingDataUpdateCoordinator(
         client: EnableBankingClient,
         account_uids: list[str],
         update_interval_minutes: int,
+        *,
+        psu_ip: str | None = None,
     ) -> None:
         super().__init__(
             hass,
@@ -85,6 +87,9 @@ class EnableBankingDataUpdateCoordinator(
         )
         self.client = client
         self.account_uids = account_uids
+        self.psu_ip = psu_ip
+        self._initial_refresh = True
+        self._refresh_lock = asyncio.Lock()
 
         # Deduplication state (in-memory, resets on HA restart — first poll
         # after a restart seeds the set without firing events, same as
@@ -93,14 +98,26 @@ class EnableBankingDataUpdateCoordinator(
         self._first_run = True
 
     async def _async_update_data(self) -> EnableBankingCoordinatorData:
+        async with self._refresh_lock:
+            psu_ip = self.psu_ip if self._initial_refresh else None
+            self._initial_refresh = False
+            return await self._async_fetch_data(psu_ip=psu_ip)
+
+    async def _async_fetch_data(
+        self, *, psu_ip: str | None
+    ) -> EnableBankingCoordinatorData:
         result = EnableBankingCoordinatorData()
-        date_from = (date.today() - timedelta(days=TRANSACTION_LOOKBACK_DAYS)).isoformat()
+        date_from = (
+            date.today() - timedelta(days=TRANSACTION_LOOKBACK_DAYS)
+        ).isoformat()
 
         for account_uid in self.account_uids:
             account_data = EnableBankingAccountData()
 
             try:
-                account_data.balances = await self.client.get_balances(account_uid)
+                account_data.balances = await self.client.get_balances(
+                    account_uid, psu_ip=psu_ip
+                )
             except EnableBankingSessionExpiredError as err:
                 raise ConfigEntryAuthFailed(
                     "Enable Banking consent expired — please re-authorise"
@@ -114,7 +131,7 @@ class EnableBankingDataUpdateCoordinator(
 
             try:
                 account_data.transactions = await self.client.get_transactions(
-                    account_uid, date_from=date_from, strategy="longest"
+                    account_uid, date_from=date_from, strategy="longest", psu_ip=psu_ip
                 )
             except EnableBankingSessionExpiredError as err:
                 raise ConfigEntryAuthFailed(
@@ -123,7 +140,9 @@ class EnableBankingDataUpdateCoordinator(
             except EnableBankingRateLimitError as err:
                 raise UpdateFailed(f"Rate limited by ASPSP: {err}") from err
             except Exception as err:  # noqa: BLE001
-                _LOGGER.warning("Failed to get transactions for %s: %s", account_uid, err)
+                _LOGGER.warning(
+                    "Failed to get transactions for %s: %s", account_uid, err
+                )
 
             result.accounts[account_uid] = account_data
             result.new_transactions[account_uid] = self._deduplicate(
@@ -136,6 +155,48 @@ class EnableBankingDataUpdateCoordinator(
                 result.new_transactions[uid] = []
 
         return result
+
+    async def async_refresh_balances(self) -> None:
+        """Refresh every balance on demand, retaining transaction data.
+
+        Serialize with polling and publish only once all accounts succeeded.
+        No transient header is stored on the client or shared HTTP session.
+        """
+        if not self.psu_ip:
+            raise HomeAssistantError(
+                "Configure a PSU IP address in the integration options first",
+                translation_domain=DOMAIN,
+                translation_key="psu_ip_required",
+            )
+
+        async with self._refresh_lock:
+            accounts = dict(self.data.accounts) if self.data else {}
+            try:
+                for uid in self.account_uids:
+                    balances = await self.client.get_balances(uid, psu_ip=self.psu_ip)
+                    accounts[uid] = replace(
+                        accounts.get(uid, EnableBankingAccountData()), balances=balances
+                    )
+            except (EnableBankingSessionExpiredError, EnableBankingAuthError) as err:
+                if self.config_entry:
+                    self.config_entry.async_start_reauth(self.hass)
+                raise HomeAssistantError(
+                    "Enable Banking authorisation failed — please re-authorise",
+                    translation_domain=DOMAIN,
+                    translation_key="refresh_auth_failed",
+                ) from err
+            except (EnableBankingError, ClientError, TimeoutError) as err:
+                raise HomeAssistantError(
+                    f"Could not refresh balances: {err}",
+                    translation_domain=DOMAIN,
+                    translation_key="refresh_failed",
+                ) from err
+
+            # A balance-only update must keep the full transaction poll's deadline.
+            self.data = EnableBankingCoordinatorData(accounts=accounts)
+            self.last_update_success = True
+            self.last_exception = None
+            self.async_update_listeners()
 
     def _deduplicate(
         self, account_uid: str, transactions: list[Transaction]

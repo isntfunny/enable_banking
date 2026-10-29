@@ -8,6 +8,7 @@ CONF_PRIVATE_KEY = "private_key"  # PEM content (not a file path!) stored in ent
 CONF_ASPSP_NAME = "aspsp_name"
 CONF_ASPSP_COUNTRY = "aspsp_country"
 CONF_PSU_TYPE = "psu_type"
+CONF_PSU_IP = "psu_ip"
 CONF_SESSION_ID = "session_id"
 CONF_ACCOUNTS = "accounts"  # list[str] of account uids, filled in after auth
 CONF_VALID_DAYS = "valid_days"
@@ -22,13 +23,10 @@ DEFAULT_VALID_DAYS = 180  # matches maximum_consent_validity of most ASPSPs (155
 # the user needs enough lead time to actually sit down and do the bank login.
 RENEWAL_WARNING_DAYS = 14
 
-# 240 min = 4x/day. Deliberately mirrors the PSD2 RTS Art. 36(6) background
-# access limit ("max. 4 times in a 24h period without PSU involvement") that
-# finAPI/most ASPSPs enforce on the /accounts/* endpoints. Requests made by
-# this coordinator never set PSU-* headers (no user is actively present
-# during a background poll), so staying at this interval keeps every install
-# comfortably under the legal limit without needing bank-specific tuning.
-DEFAULT_UPDATE_INTERVAL = 240  # minutes
+# Six hours = four scheduled refresh cycles per day. Startup/reloads and
+# bank-specific counting of endpoints/pages can consume additional quota.
+# Scheduled polls never set PSU headers.
+DEFAULT_UPDATE_INTERVAL = 360  # minutes
 TRANSACTION_LOOKBACK_DAYS = 30
 
 # --- Enable Banking API ---

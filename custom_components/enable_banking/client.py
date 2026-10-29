@@ -403,8 +403,17 @@ class EnableBankingClient:
     # Account data
     # ------------------------------------------------------------------
 
-    async def get_account_details(self, account_id: str) -> AccountDetails:
-        data = await self._get(f"/accounts/{account_id}/details")
+    async def get_account_details(
+        self,
+        account_id: str,
+        *,
+        psu_ip: str | None = None,
+        psu_user_agent: str | None = None,
+    ) -> AccountDetails:
+        data = await self._get(
+            f"/accounts/{account_id}/details",
+            extra_headers=self._psu_headers(psu_ip, psu_user_agent),
+        )
         return AccountDetails.from_api(data)
 
     async def get_balances(

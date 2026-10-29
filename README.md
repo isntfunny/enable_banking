@@ -61,6 +61,9 @@ You'll need:
   `C24` / `DE` — check via the API if unsure, display names sometimes
   differ from the bank's marketing name)
 - **Consent validity** — in days, capped by the bank (usually 180)
+- **PSU IP address** — optional public IPv4/IPv6 address to send as
+  `Psu-Ip-Address` during startup and manual balance refreshes. You can also
+  set or change this later in the integration's **Configure** dialog.
 
 Submitting the form takes you straight to your bank. After you log in and
 pick the accounts to share, the bank redirects back into Home Assistant and
@@ -102,13 +105,38 @@ you dropped stop updating.
 
 ## Rate limits — background polling vs. manual refresh
 
-PSD2 (RTS Art. 36(6)) caps **background** account-data access (no PSU
-present) at **4 requests/day per account** — enforced by the bank's XS2A
-backend (e.g. finAPI for C24), not by Enable Banking or this integration.
-The default poll interval (240 min = 4×/day) is chosen to sit exactly at
-that legal limit. Requests carrying a `Psu-Ip-Address` header are exempt,
-but the polling coordinator intentionally never sends one — a scheduled
-background job is by definition not "PSU present".
+Banks limit background account-data access, often to four accesses per
+day. The default polling interval is **360 minutes (six hours)**, giving
+four scheduled refresh cycles per day. Startup/reloads, multiple endpoints,
+and transaction pagination can consume additional quota depending on how
+the bank counts requests; this interval cannot guarantee avoiding every
+bank's limit.
+
+Each configured integration now has one **Refresh balances** button
+(**Kontostände aktualisieren** in German). It fetches balances for all
+accounts belonging to that entry and immediately updates their sensors.
+Transactions and pending-transaction data are retained. The button remains
+available when a background request hits a rate limit.
+
+To enable it for an existing integration:
+
+1. Open **Settings → Devices & services → Enable Banking**.
+2. Select **Configure** for the bank entry and enter the **PSU IP address**.
+3. Save. The entry reloads, sending that IP on the initial account-details,
+   balances and transactions requests. Subsequent button presses send it
+   only on the balance requests.
+
+Scheduled background polls omit the header. An empty IP keeps the original
+header-free startup behaviour; the button will ask you to configure an IP.
+The option can also be changed while an entry is waiting to retry setup.
+No new bank login is needed to change it. Keep it up to date if your public
+IP changes.
+
+[Enable Banking documents PSU headers](https://enablebanking.com/docs/faq/)
+as identifying an end-user actively requesting data, and the address should
+be that user's actual public IP. The configured IP is also sent on automatic
+Home Assistant restarts; restarting alone does not establish user presence.
+Banks may still reject or limit requests carrying the header.
 
 ## Re-authentication
 
@@ -116,3 +144,15 @@ Consent needs renewal after the configured validity period (max. ~180 days
 for most banks). Home Assistant will show a **Reauthenticate** notification
 for this integration when the session expires — click it, log in again at
 the bank, done. No need to re-enter application ID / private key.
+
+## Tests
+
+Tests load the integration in Home Assistant and intercept bank traffic;
+no bank credentials or real account requests are used.
+
+```sh
+uv venv --python 3.13 .venv
+uv pip install --python .venv/bin/python -r requirements-test.txt
+.venv/bin/pytest
+.venv/bin/ruff check --isolated --select E4,E7,E9,F custom_components tests
+```

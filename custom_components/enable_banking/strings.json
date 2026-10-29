@@ -3,14 +3,15 @@
     "step": {
       "user": {
         "title": "Enable Banking",
-        "description": "Connect a bank account via the Enable Banking Open Banking (PSD2) API. You need an application registered at https://enablebanking.com/cp/applications with your own account whitelisted (\"restricted production app\" — free for personal use).\n\nRegister this exact URL as a redirect URL for your application, otherwise the bank cannot send you back here:\n\n`{redirect_uri}`",
+        "description": "Connect a bank account via the Enable Banking Open Banking (PSD2) API. You need an application registered at {applications_url} with your own account whitelisted (\"restricted production app\" — free for personal use).\n\nRegister this exact URL as a redirect URL for your application, otherwise the bank cannot send you back here:\n\n`{redirect_uri}`",
         "data": {
           "application_id": "Application ID",
           "private_key": "Private key (PEM content, not a file path)",
           "aspsp_name": "Bank name (as listed by GET /aspsps, e.g. \"C24\")",
           "aspsp_country": "Bank country code (ISO 3166, e.g. \"DE\")",
           "psu_type": "Account type",
-          "valid_days": "Consent validity in days (max. per bank, usually 180)"
+          "valid_days": "Consent validity in days (max. per bank, usually 180)",
+          "psu_ip": "PSU IP address for startup and manual refresh (optional)"
         }
       },
       "reauth_confirm": {
@@ -23,7 +24,8 @@
       "invalid_auth": "Authentication failed — application ID or private key is not accepted by the API.",
       "bank_error": "Your bank aborted the authorisation with \"{error}\" and gave no further detail. This is usually temporary — try again, and if it persists, try a different authentication method (app push, SMS or chip TAN) at the bank's login page.",
       "no_code": "The bank redirected back without an authorisation code.",
-      "no_accounts": "No accounts were linked in this session. Make sure you selected at least one account during the bank login."
+      "no_accounts": "No accounts were linked in this session. Make sure you selected at least one account during the bank login.",
+      "invalid_ip": "Enter an IPv4 or IPv6 address, or leave the field empty."
     },
     "abort": {
       "already_configured": "This application/bank combination is already configured.",
@@ -42,6 +44,36 @@
       "consent_expires": {
         "name": "Consent expires"
       }
+    },
+    "button": {
+      "refresh_balances": {
+        "name": "{bank} Refresh balances"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Balance refresh",
+        "description": "Enter the public IP address to send as Psu-Ip-Address when this integration starts and when you press its refresh button. Scheduled background polling omits the header. Leave empty to disable the header; the manual refresh button requires an IP address.",
+        "data": {
+          "psu_ip": "PSU IP address"
+        }
+      }
+    },
+    "error": {
+      "invalid_ip": "Enter an IPv4 or IPv6 address, or leave the field empty."
+    }
+  },
+  "exceptions": {
+    "psu_ip_required": {
+      "message": "Configure a PSU IP address in the integration options first."
+    },
+    "refresh_auth_failed": {
+      "message": "Bank authorisation failed. Please re-authorise the integration."
+    },
+    "refresh_failed": {
+      "message": "Could not refresh balances. The bank may be rate limiting requests or temporarily unavailable. Try again later."
     }
   }
 }

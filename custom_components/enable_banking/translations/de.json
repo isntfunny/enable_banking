@@ -1,0 +1,46 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "data": {
+          "psu_ip": "PSU-IP-Adresse für Start und manuelle Aktualisierung (optional)"
+        }
+      }
+    },
+    "error": {
+      "invalid_ip": "Bitte eine IPv4- oder IPv6-Adresse eingeben oder das Feld leer lassen."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Kontostände aktualisieren",
+        "description": "Öffentliche IP-Adresse, die beim Start dieser Integration und beim Drücken des Aktualisieren-Buttons als Psu-Ip-Address gesendet wird. Zeitgesteuerte Hintergrundabrufe senden diesen Header nicht. Ein leeres Feld deaktiviert den Header; der manuelle Button benötigt eine IP-Adresse.",
+        "data": {
+          "psu_ip": "PSU-IP-Adresse"
+        }
+      }
+    },
+    "error": {
+      "invalid_ip": "Bitte eine IPv4- oder IPv6-Adresse eingeben oder das Feld leer lassen."
+    }
+  },
+  "entity": {
+    "button": {
+      "refresh_balances": {
+        "name": "{bank} Kontostände aktualisieren"
+      }
+    }
+  },
+  "exceptions": {
+    "psu_ip_required": {
+      "message": "Bitte zuerst eine PSU-IP-Adresse in den Integrationsoptionen konfigurieren."
+    },
+    "refresh_auth_failed": {
+      "message": "Die Bankautorisierung ist fehlgeschlagen. Bitte die Integration erneut autorisieren."
+    },
+    "refresh_failed": {
+      "message": "Kontostände konnten nicht aktualisiert werden. Möglicherweise begrenzt die Bank die Abrufe oder ist vorübergehend nicht erreichbar. Bitte später erneut versuchen."
+    }
+  }
+}
