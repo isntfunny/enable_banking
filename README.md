@@ -156,3 +156,7 @@ uv pip install --python .venv/bin/python -r requirements-test.txt
 .venv/bin/pytest
 .venv/bin/ruff check --isolated --select E4,E7,E9,F custom_components tests
 ```
+
+## License
+
+[MIT](LICENSE)

@@ -6,12 +6,10 @@
   "documentation": "https://enablebanking.com/docs/",
   "integration_type": "service",
   "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/isntfunny/enable_banking/issues",
   "loggers": [
     "custom_components.enable_banking"
   ],
   "quality_scale": "legacy",
-  "requirements": [
-    "PyJWT[crypto]>=2.8.0"
-  ],
   "version": "0.2.0"
 }
